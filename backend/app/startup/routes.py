@@ -2,6 +2,8 @@
 
 from fastapi import APIRouter, FastAPI
 
+from app.api.v1.llm.router import router as llm_router
+
 
 router = APIRouter()
 """Router containing platform-level routes."""
@@ -16,3 +18,4 @@ def get_service_status() -> dict[str, str]:
 def register_routes(app: FastAPI) -> None:
     """Register the platform routers on ``app``."""
     app.include_router(router)
+    app.include_router(llm_router)

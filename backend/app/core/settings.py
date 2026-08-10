@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = Field(default=8000, ge=1, le=65535)
     LOG_LEVEL: str = "INFO"
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_DEFAULT_MODEL: str = "qwen2.5:3b"
+    OLLAMA_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0, le=600)
 
 
 settings = Settings()

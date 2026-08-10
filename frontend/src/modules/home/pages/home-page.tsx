@@ -1,0 +1,1 @@
+export function HomePage() { return <section className="max-w-5xl"><p className="text-sm font-medium text-slate-500">Workspace</p><h1 className="mt-2 text-2xl font-semibold tracking-tight">Welcome to NitiOS</h1><p className="mt-2 text-sm leading-6 text-slate-600">Your workspace foundation is ready for the next set of modules.</p></section> }

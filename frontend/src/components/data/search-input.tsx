@@ -1,0 +1,5 @@
+import type { InputHTMLAttributes } from 'react'
+import { Search, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
+export interface SearchInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> { onClear?: () => void }
+export function SearchInput({ className, onClear, value, ...props }: SearchInputProps) { const hasValue = Boolean(value); return <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><input type="search" value={value} className={cn('h-9 w-full rounded-md border border-slate-200 bg-white py-2 pl-9 pr-9 text-sm outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100', className)} {...props} />{hasValue && onClear && <button type="button" onClick={onClear} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700" aria-label="Clear search"><X className="size-4" /></button>}</div> }
