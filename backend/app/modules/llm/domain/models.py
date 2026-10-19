@@ -17,17 +17,6 @@ class LLMCapability(str, Enum):
     CLASSIFICATION = "classification"
 
 
-class LLMMessage(BaseModel):
-    """A role-labelled message in an LLM conversation."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    role: Literal["system", "user", "assistant", "tool"]
-    content: str
-    name: str | None = None
-    tool_call_id: str | None = None
-
-
 class ToolDefinition(BaseModel):
     """A provider-independent function tool made available to a request."""
 
@@ -46,6 +35,22 @@ class ToolCall(BaseModel):
     id: str | None = None
     name: str = Field(min_length=1)
     arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class LLMMessage(BaseModel):
+    """A role-labelled message in an LLM conversation.
+
+    Assistant messages carry ``tool_calls`` when the model requested tools, and
+    ``tool`` messages carry the result for the call named by ``name``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str
+    name: str | None = None
+    tool_call_id: str | None = None
+    tool_calls: list[ToolCall] = Field(default_factory=list)
 
 
 class ToolCallDelta(BaseModel):

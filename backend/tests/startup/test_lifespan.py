@@ -21,7 +21,14 @@ class LifespanTests(unittest.IsolatedAsyncioTestCase):
         shared_http_client = Mock()
         shared_http_client.aclose = AsyncMock()
 
-        with patch("app.startup.lifespan.httpx.AsyncClient", return_value=shared_http_client) as create_client:
+        tool_hub = Mock()
+        tool_hub.connect = AsyncMock()
+        tool_hub.aclose = AsyncMock()
+
+        with (
+            patch("app.startup.lifespan.httpx.AsyncClient", return_value=shared_http_client) as create_client,
+            patch("app.startup.lifespan.MCPToolHub", return_value=tool_hub),
+        ):
             async with lifespan(app):
                 create_client.assert_called_once()
                 _, kwargs = create_client.call_args
@@ -36,7 +43,12 @@ class LifespanTests(unittest.IsolatedAsyncioTestCase):
                 injected_client = service._gateway._provider._client._client
                 self.assertIs(injected_client, shared_http_client)
 
+                self.assertIs(app.state.tool_executor, tool_hub)
+                self.assertIs(app.state.chat_agent_service._gateway, service._gateway)
+                tool_hub.connect.assert_awaited_once()
+
         shared_http_client.aclose.assert_awaited_once()
+        tool_hub.aclose.assert_awaited_once()
 
     def test_ollama_timeout_setting_must_be_positive(self) -> None:
         """Reject invalid timeout configuration before application startup."""

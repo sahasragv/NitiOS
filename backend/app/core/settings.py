@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_DEFAULT_MODEL: str = "qwen2.5:3b"
     OLLAMA_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0, le=600)
+    MCP_CONFIG_PATH: Path = _BACKEND_DIRECTORY / "mcp_servers.json"
+    MCP_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0, le=300)
+    AGENT_MAX_STEPS: int = Field(default=6, ge=1, le=20)
 
 
 settings = Settings()

@@ -1,0 +1,18 @@
+{
+  "servers": {
+    "basics": {
+      "transport": "stdio",
+      "command": "python",
+      "args": ["-m", "app.mcp_servers.basics"]
+    },
+    "github": {
+      "transport": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}",
+        "X-MCP-Toolsets": "repos,issues,pull_requests",
+        "X-MCP-Readonly": "true"
+      }
+    }
+  }
+}

@@ -16,6 +16,8 @@ from app.modules.llm.domain.models import (
     LLMRequest,
     RequestMetadata,
     ResponseFormat,
+    ToolCall,
+    ToolDefinition,
 )
 from app.modules.llm.providers.ollama.client import OllamaClient, OllamaProviderError
 from app.modules.llm.providers.ollama.generation import OllamaGenerationProvider
@@ -143,3 +145,45 @@ class OllamaGenerationProviderTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await http_client.aclose()
         self.assertEqual(error.exception.reason, "unsupported_response_format")
+
+    async def test_tools_and_tool_messages_are_translated(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            self.assertEqual(body["tools"][0]["function"]["name"], "basics__calculator")
+            self.assertEqual(body["tools"][0]["function"]["parameters"], {"type": "object"})
+            self.assertEqual(body["messages"][1]["tool_calls"], [{"function": {"name": "basics__calculator", "arguments": {"expression": "1+1"}}}])
+            self.assertEqual(body["messages"][2], {"role": "tool", "content": "2", "tool_name": "basics__calculator"})
+            return httpx.Response(200, json={"message": {"content": "2"}})
+
+        provider, http_client = self._provider(handler)
+        try:
+            await provider.generate(self._request(
+                messages=[
+                    LLMMessage(role="user", content="1+1?"),
+                    LLMMessage(role="assistant", content="", tool_calls=[ToolCall(name="basics__calculator", arguments={"expression": "1+1"})]),
+                    LLMMessage(role="tool", content="2", name="basics__calculator", tool_call_id="call-1"),
+                ],
+                tools=[ToolDefinition(name="basics__calculator", input_schema={"type": "object"})],
+            ))
+        finally:
+            await http_client.aclose()
+
+    async def test_tool_calls_are_normalized_from_response(self) -> None:
+        def handler(_: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"message": {"content": "", "tool_calls": [
+                {"function": {"name": "basics__get_weather", "arguments": {"location": "Pune"}}},
+                {"function": {"name": "basics__calculator", "arguments": "{\"expression\": \"2*3\"}"}},
+                {"function": {}},
+            ]}})
+
+        provider, http_client = self._provider(handler)
+        try:
+            response = await provider.generate(self._request())
+        finally:
+            await http_client.aclose()
+        self.assertIsNone(response.content)
+        self.assertEqual([(call.name, call.arguments) for call in response.tool_calls], [
+            ("basics__get_weather", {"location": "Pune"}),
+            ("basics__calculator", {"expression": "2*3"}),
+        ])
+        self.assertTrue(all(call.id for call in response.tool_calls))

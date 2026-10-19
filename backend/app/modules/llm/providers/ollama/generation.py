@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from time import perf_counter
 from typing import Any
+from uuid import uuid4
 
 from app.core.logging import get_logger
 from app.modules.llm.domain.interfaces import GenerationProvider
 from app.modules.llm.domain.models import (
+    LLMMessage,
     LLMRequest,
     LLMResponse,
     LLMStreamChunk,
     LLMUsage,
     ResponseMetadata,
+    ToolCall,
 )
 from app.modules.llm.providers.ollama.client import OllamaClient, OllamaProviderError
 
@@ -102,14 +106,64 @@ class OllamaGenerationProvider(GenerationProvider):
 
         payload: dict[str, Any] = {
             "model": self._default_model,
-            "messages": [{"role": message.role, "content": message.content} for message in request.messages],
+            "messages": [self._to_ollama_message(message) for message in request.messages],
             "stream": stream,
         }
+        if request.tools:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description or "",
+                        "parameters": tool.input_schema or {"type": "object", "properties": {}},
+                    },
+                }
+                for tool in request.tools
+            ]
         if options:
             payload["options"] = options
         if request.response_format.type == "json":
             payload["format"] = "json"
         return payload
+
+    @staticmethod
+    def _to_ollama_message(message: LLMMessage) -> dict[str, Any]:
+        """Translate one message, including tool calls and tool results, to Ollama's chat shape."""
+        translated: dict[str, Any] = {"role": message.role, "content": message.content}
+        if message.tool_calls:
+            translated["tool_calls"] = [
+                {"function": {"name": call.name, "arguments": call.arguments}} for call in message.tool_calls
+            ]
+        if message.role == "tool" and message.name:
+            translated["tool_name"] = message.name
+        return translated
+
+    @staticmethod
+    def _to_tool_calls(raw_calls: object) -> list[ToolCall]:
+        """Normalize Ollama tool calls, assigning ids because Ollama may omit them."""
+        if not isinstance(raw_calls, list):
+            return []
+        tool_calls: list[ToolCall] = []
+        for raw_call in raw_calls:
+            function = raw_call.get("function", {}) if isinstance(raw_call, dict) else {}
+            name = function.get("name")
+            if not name:
+                continue
+            arguments = function.get("arguments") or {}
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    arguments = {}
+            tool_calls.append(
+                ToolCall(
+                    id=raw_call.get("id") or f"call_{uuid4().hex[:12]}",
+                    name=name,
+                    arguments=arguments if isinstance(arguments, dict) else {},
+                )
+            )
+        return tool_calls
 
     def _to_response(self, result: dict[str, Any], *, request_id: str | None, latency_ms: float) -> LLMResponse:
         """Normalize an Ollama completion while retaining only generic response data."""
@@ -118,6 +172,7 @@ class OllamaGenerationProvider(GenerationProvider):
         output_tokens = self._as_non_negative_int(result.get("eval_count"))
         return LLMResponse(
             content=message.get("content") or None,
+            tool_calls=self._to_tool_calls(message.get("tool_calls")),
             provider=self.name,
             model=str(result.get("model") or self._default_model),
             usage=LLMUsage(input_tokens=input_tokens, output_tokens=output_tokens, total_tokens=input_tokens + output_tokens),

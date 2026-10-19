@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, FastAPI
 
+from app.api.v1.agent.router import router as agent_router
 from app.api.v1.llm.router import router as llm_router
 
 
@@ -19,3 +20,4 @@ def register_routes(app: FastAPI) -> None:
     """Register the platform routers on ``app``."""
     app.include_router(router)
     app.include_router(llm_router)
+    app.include_router(agent_router)
