@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
+import json
 import unittest
+from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi.testclient import TestClient
 
-from app.api.v1.agent.dependencies import get_chat_agent_service, get_tool_executor
+from app.api.v1.agent.dependencies import get_chat_agent_service, get_model_info, get_title_service, get_tool_executor
 from app.main import app
-from app.modules.agent.application.chat import AgentChatFailedError, ChatResult
+from app.modules.agent.application.chat import (
+    AgentChatFailedError,
+    ChatCompletedEvent,
+    ChatEvent,
+    ChatResult,
+    TextDeltaEvent,
+    ToolFinishedEvent,
+    ToolStartedEvent,
+)
 from app.modules.llm.domain.models import ToolDefinition
 from app.modules.tools.domain.models import ToolInvocation
 
@@ -32,10 +42,24 @@ class FakeChatService:
             request_id=command.request_id or "generated",
         )
 
+    async def stream_chat(self, command: Any) -> AsyncIterator[ChatEvent]:
+        self.command = command
+        yield ToolStartedEvent(id="c1", name="basics__calculator", arguments={"expression": "2+2"})
+        yield ToolFinishedEvent(id="c1", name="basics__calculator", output="2+2 = 4", is_error=False)
+        yield TextDeltaEvent(text="It is 4.")
+        if self.error:
+            raise self.error
+        yield ChatCompletedEvent(result=await self.chat(command))
+
 
 class FakeTools:
     def list_tools(self) -> list[ToolDefinition]:
         return [ToolDefinition(name="basics__calculator", description="Math", input_schema={"type": "object"})]
+
+
+class FakeTitleService:
+    async def suggest_title(self, message: str, reply: str | None = None) -> str:
+        return f"Title for {message}"
 
 
 class AgentEndpointTests(unittest.TestCase):
@@ -45,6 +69,8 @@ class AgentEndpointTests(unittest.TestCase):
         self.service = FakeChatService()
         app.dependency_overrides[get_chat_agent_service] = lambda: self.service
         app.dependency_overrides[get_tool_executor] = FakeTools
+        app.dependency_overrides[get_title_service] = FakeTitleService
+        app.dependency_overrides[get_model_info] = lambda: {"provider": "ollama", "model": "qwen2.5:7b"}
         self.client = TestClient(app)
 
     def tearDown(self) -> None:
@@ -76,3 +102,27 @@ class AgentEndpointTests(unittest.TestCase):
     def test_lists_tools(self) -> None:
         response = self.client.get("/api/v1/agent/tools")
         self.assertEqual(response.json()["data"][0]["name"], "basics__calculator")
+
+    def _stream_events(self) -> list[dict[str, Any]]:
+        response = self.client.post("/api/v1/agent/chat/stream", json={"messages": [{"role": "user", "content": "2+2?"}]})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.headers["content-type"].startswith("text/event-stream"))
+        return [json.loads(line.removeprefix("data: ")) for line in response.text.split("\n\n") if line.startswith("data: ")]
+
+    def test_stream_emits_events_in_order(self) -> None:
+        events = self._stream_events()
+        self.assertEqual([event["type"] for event in events], ["tool_started", "tool_finished", "text_delta", "completed"])
+        self.assertEqual(events[-1]["result"]["content"], "It is 4.")
+
+    def test_stream_failure_ends_with_error_event(self) -> None:
+        self.service.error = AgentChatFailedError()
+        events = self._stream_events()
+        self.assertEqual(events[-1], {"type": "error", "code": "AGENT_CHAT_FAILED", "message": "The assistant is currently unavailable."})
+
+    def test_title_endpoint(self) -> None:
+        response = self.client.post("/api/v1/agent/title", json={"message": "weather", "reply": "Sunny"})
+        self.assertEqual(response.json()["data"], {"title": "Title for weather"})
+
+    def test_info_endpoint(self) -> None:
+        data = self.client.get("/api/v1/agent/info").json()["data"]
+        self.assertEqual(data, {"provider": "ollama", "model": "qwen2.5:7b", "tool_count": 1, "servers": ["basics"]})

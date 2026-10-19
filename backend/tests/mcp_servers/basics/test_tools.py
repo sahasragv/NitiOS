@@ -64,3 +64,41 @@ class HttpToolTests(unittest.IsolatedAsyncioTestCase):
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             self.assertEqual(await tools.translate("Hello", "FR", client=client), "Bonjour")
+
+
+class ConversionTests(unittest.TestCase):
+    """Verify unit conversion across dimensions."""
+
+    def test_temperature(self) -> None:
+        self.assertEqual(tools.convert_units(32.6, "C", "F"), "32.6 °C = 90.68 °F")
+        self.assertEqual(tools.convert_units(212, "fahrenheit", "celsius"), "212 °F = 100 °C")
+        self.assertEqual(tools.convert_units(0, "C", "K"), "0 °C = 273.15 K")
+
+    def test_linear_units_and_plurals(self) -> None:
+        self.assertEqual(tools.convert_units(10, "km", "miles"), "10 km = 6.213712 miles")
+        self.assertEqual(tools.convert_units(2, "lb", "kg"), "2 lb = 0.907185 kg")
+        self.assertEqual(tools.convert_units(100, "km/h", "mph"), "100 km/h = 62.137119 mph")
+
+    def test_rejects_unknown_and_mismatched_units(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Unknown unit"):
+            tools.convert_units(1, "parsec", "km")
+        with self.assertRaisesRegex(ValueError, "Cannot convert mass"):
+            tools.convert_units(1, "kg", "km")
+
+
+class CurrencyTests(unittest.IsolatedAsyncioTestCase):
+    """Verify currency conversion parsing."""
+
+    async def test_converts_with_reference_rate(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.assertEqual((request.url.params["base"], request.url.params["symbols"]), ("USD", "INR"))
+            return httpx.Response(200, json={"amount": 10.0, "base": "USD", "date": "2026-10-16", "rates": {"INR": 949.65}})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            result = await tools.convert_currency(10, "usd", "inr", client)
+        self.assertEqual(result, "10 USD = 949.65 INR (ECB reference rate, 2026-10-16)")
+
+    async def test_unknown_currency(self) -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(404, json={}))) as client:
+            with self.assertRaisesRegex(ValueError, "Unsupported currency"):
+                await tools.convert_currency(1, "USD", "XYZ", client)

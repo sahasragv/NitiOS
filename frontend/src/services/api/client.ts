@@ -12,7 +12,9 @@ export interface ApiError {
 
 export type ApiQueryKey = readonly [path: string, config?: AxiosRequestConfig]
 
-const baseURL = import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL ?? '/api'
+/** API root. Paths in `API_ENDPOINTS` start with `/v1`, so this must end at `/api`. */
+export const apiBaseURL: string = import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL ?? '/api'
+const baseURL = apiBaseURL
 
 /** Shared HTTP client. Authentication, request IDs, and logging are added here when available. */
 export const apiClient = axios.create({

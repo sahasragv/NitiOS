@@ -54,3 +54,25 @@ class ToolDTO(BaseModel):
     name: str
     description: str | None = None
     input_schema: dict[str, Any]
+
+
+class TitleRequestDTO(BaseModel):
+    """The opening exchange of a conversation to summarize."""
+
+    message: str = Field(min_length=1, max_length=8000)
+    reply: str | None = Field(default=None, max_length=8000)
+
+
+class TitleResponseDTO(BaseModel):
+    """A short conversation title."""
+
+    title: str
+
+
+class AgentInfoDTO(BaseModel):
+    """Which model answers chats and how many tools it can use."""
+
+    provider: str
+    model: str
+    tool_count: int
+    servers: list[str]

@@ -148,6 +148,111 @@ def convert_time(time_text: str, from_timezone: str, to_timezone: str, date_text
     )
 
 
+_TEMPERATURE_UNITS: dict[str, str] = {
+    "c": "C", "celsius": "C", "°c": "C",
+    "f": "F", "fahrenheit": "F", "°f": "F",
+    "k": "K", "kelvin": "K",
+}
+
+# Each unit maps to (dimension, factor to the dimension's base unit).
+_LINEAR_UNITS: dict[str, tuple[str, float]] = {
+    # length, base metre
+    "mm": ("length", 0.001), "millimeter": ("length", 0.001), "millimetre": ("length", 0.001),
+    "cm": ("length", 0.01), "centimeter": ("length", 0.01), "centimetre": ("length", 0.01),
+    "m": ("length", 1.0), "meter": ("length", 1.0), "metre": ("length", 1.0),
+    "km": ("length", 1000.0), "kilometer": ("length", 1000.0), "kilometre": ("length", 1000.0),
+    "in": ("length", 0.0254), "inch": ("length", 0.0254), "inches": ("length", 0.0254),
+    "ft": ("length", 0.3048), "foot": ("length", 0.3048), "feet": ("length", 0.3048),
+    "yd": ("length", 0.9144), "yard": ("length", 0.9144),
+    "mi": ("length", 1609.344), "mile": ("length", 1609.344),
+    # mass, base kilogram
+    "mg": ("mass", 1e-6), "g": ("mass", 0.001), "gram": ("mass", 0.001),
+    "kg": ("mass", 1.0), "kilogram": ("mass", 1.0),
+    "t": ("mass", 1000.0), "tonne": ("mass", 1000.0),
+    "oz": ("mass", 0.028349523125), "ounce": ("mass", 0.028349523125),
+    "lb": ("mass", 0.45359237), "lbs": ("mass", 0.45359237), "pound": ("mass", 0.45359237),
+    # volume, base litre
+    "ml": ("volume", 0.001), "milliliter": ("volume", 0.001), "millilitre": ("volume", 0.001),
+    "l": ("volume", 1.0), "liter": ("volume", 1.0), "litre": ("volume", 1.0),
+    "cup": ("volume", 0.2365882365), "floz": ("volume", 0.0295735295625), "fl oz": ("volume", 0.0295735295625),
+    "gal": ("volume", 3.785411784), "gallon": ("volume", 3.785411784),
+    # speed, base metre per second
+    "m/s": ("speed", 1.0), "km/h": ("speed", 1 / 3.6), "kmh": ("speed", 1 / 3.6), "kph": ("speed", 1 / 3.6),
+    "mph": ("speed", 0.44704), "knot": ("speed", 0.514444), "knots": ("speed", 0.514444),
+    # area, base square metre
+    "m2": ("area", 1.0), "sq m": ("area", 1.0), "km2": ("area", 1e6), "sq km": ("area", 1e6),
+    "ft2": ("area", 0.09290304), "sq ft": ("area", 0.09290304), "acre": ("area", 4046.8564224), "hectare": ("area", 10000.0), "ha": ("area", 10000.0),
+    # digital storage, base byte (binary multiples)
+    "b": ("data", 1.0), "byte": ("data", 1.0), "kb": ("data", 1024.0), "mb": ("data", 1024.0**2),
+    "gb": ("data", 1024.0**3), "tb": ("data", 1024.0**4),
+}
+
+
+def _normalize_unit(unit: str) -> str:
+    """Lower-case a unit and drop a trailing plural 's' when that yields a known unit."""
+    normalized = unit.strip().lower()
+    if normalized not in _LINEAR_UNITS and normalized.endswith("s") and normalized[:-1] in _LINEAR_UNITS:
+        return normalized[:-1]
+    return normalized
+
+
+def _format_number(value: float) -> str:
+    """Round to a readable precision without scientific notation for everyday values."""
+    return f"{value:,.6f}".rstrip("0").rstrip(".") if abs(value) < 1e12 else f"{value:.6g}"
+
+
+def convert_units(value: float, from_unit: str, to_unit: str) -> str:
+    """Convert ``value`` between units of temperature, length, mass, volume, speed, area or data size."""
+    source, target = _normalize_unit(from_unit), _normalize_unit(to_unit)
+    if source in _TEMPERATURE_UNITS and target in _TEMPERATURE_UNITS:
+        source_scale, target_scale = _TEMPERATURE_UNITS[source], _TEMPERATURE_UNITS[target]
+        celsius = {"C": value, "F": (value - 32) * 5 / 9, "K": value - 273.15}[source_scale]
+        result = {"C": celsius, "F": celsius * 9 / 5 + 32, "K": celsius + 273.15}[target_scale]
+        return f"{_format_number(value)} °{source_scale} = {_format_number(result)} °{target_scale}".replace("°K", "K")
+
+    if source not in _LINEAR_UNITS or target not in _LINEAR_UNITS:
+        unknown = from_unit if source not in _LINEAR_UNITS and source not in _TEMPERATURE_UNITS else to_unit
+        raise ValueError(f"Unknown unit '{unknown}'. Try units like km, mi, kg, lb, l, gal, km/h, mph, sq ft, GB or C/F/K.")
+    (source_dimension, source_factor), (target_dimension, target_factor) = _LINEAR_UNITS[source], _LINEAR_UNITS[target]
+    if source_dimension != target_dimension:
+        raise ValueError(f"Cannot convert {source_dimension} ({from_unit}) to {target_dimension} ({to_unit}).")
+    result = value * source_factor / target_factor
+    return f"{_format_number(value)} {from_unit.strip()} = {_format_number(result)} {to_unit.strip()}"
+
+
+async def convert_currency(
+    amount: float,
+    from_currency: str,
+    to_currency: str,
+    client: httpx.AsyncClient | None = None,
+) -> str:
+    """Convert money using the latest European Central Bank reference rates from Frankfurter."""
+    source, target = from_currency.strip().upper(), to_currency.strip().upper()
+    if source == target:
+        return f"{_format_number(amount)} {source} = {_format_number(amount)} {target}"
+    owns_client = client is None
+    http = client or httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS)
+    try:
+        response = await http.get(
+            "https://api.frankfurter.dev/v1/latest",
+            params={"base": source, "symbols": target, "amount": amount},
+        )
+        if response.status_code == 404:
+            raise ValueError("Unsupported currency. Use ISO codes such as USD, EUR, INR, GBP or JPY.")
+        response.raise_for_status()
+        data = response.json()
+    except httpx.HTTPError as error:
+        raise ValueError("The currency service is unavailable right now.") from error
+    finally:
+        if owns_client:
+            await http.aclose()
+
+    rate_total = data.get("rates", {}).get(target)
+    if rate_total is None:
+        raise ValueError(f"No exchange rate available for {source} to {target}.")
+    return f"{_format_number(amount)} {source} = {rate_total:,.2f} {target} (ECB reference rate, {data.get('date', 'latest')})"
+
+
 async def get_weather(location: str, client: httpx.AsyncClient | None = None) -> str:
     """Return current conditions and today's range for ``location`` using Open-Meteo."""
     owns_client = client is None

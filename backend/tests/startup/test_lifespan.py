@@ -54,3 +54,27 @@ class LifespanTests(unittest.IsolatedAsyncioTestCase):
         """Reject invalid timeout configuration before application startup."""
         with self.assertRaises(ValidationError):
             Settings(OLLAMA_TIMEOUT_SECONDS=0)
+
+
+class ProviderSelectionTests(unittest.TestCase):
+    """Verify the configured LLM provider is built, with a safe fallback."""
+
+    def test_selects_anthropic_when_configured_with_key(self) -> None:
+        from pydantic import SecretStr
+
+        from app.modules.llm.providers.anthropic.generation import AnthropicGenerationProvider
+        from app.startup.lifespan import _create_generation_provider
+
+        with patch("app.startup.lifespan.settings", settings.model_copy(update={"LLM_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": SecretStr("sk-test")})):
+            provider, http_client = _create_generation_provider()
+        self.assertIsInstance(provider, AnthropicGenerationProvider)
+        self.assertEqual(http_client.headers["x-api-key"], "sk-test")
+        self.assertEqual(http_client.headers["anthropic-version"], "2023-06-01")
+
+    def test_falls_back_to_ollama_without_key(self) -> None:
+        from app.modules.llm.providers.ollama.generation import OllamaGenerationProvider
+        from app.startup.lifespan import _create_generation_provider
+
+        with patch("app.startup.lifespan.settings", settings.model_copy(update={"LLM_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": None})):
+            provider, _ = _create_generation_provider()
+        self.assertIsInstance(provider, OllamaGenerationProvider)

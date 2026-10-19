@@ -127,6 +127,23 @@ class OllamaGenerationProviderTests(unittest.IsolatedAsyncioTestCase):
             await http_client.aclose()
         self.assertEqual(chunks[0].content_delta, "Hi")
         self.assertEqual(chunks[1].finish_reason, "stop")
+        self.assertIsNone(chunks[0].usage)
+        self.assertIsNotNone(chunks[1].usage)
+
+    async def test_streaming_emits_whole_tool_calls_and_usage(self) -> None:
+        def handler(_: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=(
+                b'{"message":{"content":"","tool_calls":[{"id":"call_1","function":{"index":0,"name":"basics__get_weather","arguments":{"location":"Pune"}}}]},"done":false}\n'
+                b'{"message":{"content":""},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":4}\n'
+            ))
+
+        provider, http_client = self._provider(handler)
+        try:
+            chunks = [chunk async for chunk in provider.stream(self._request())]
+        finally:
+            await http_client.aclose()
+        self.assertEqual([(call.id, call.name, call.arguments) for call in chunks[0].tool_calls], [("call_1", "basics__get_weather", {"location": "Pune"})])
+        self.assertEqual(chunks[1].usage.total_tokens if chunks[1].usage else None, 14)
 
     async def test_streaming_wraps_http_failure(self) -> None:
         provider, http_client = self._provider(lambda _: httpx.Response(502))

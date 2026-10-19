@@ -157,7 +157,11 @@ class LLMStreamChunk(BaseModel):
 
     content_delta: str | None = None
     tool_call_delta: ToolCallDelta | None = None
+    tool_calls: list[ToolCall] = Field(default_factory=list)
+    """Complete tool calls, for providers that emit each call whole rather than as deltas."""
     finish_reason: str | None = None
+    usage: LLMUsage | None = None
+    """Token usage, typically present only on the final chunk."""
     metadata: ResponseMetadata = Field(default_factory=ResponseMetadata)
 
 

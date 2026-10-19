@@ -1,5 +1,4 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
-import { AppLayout } from '@/components/layout/app-layout'
-import { HomePage } from '@/modules/home/pages/home-page'
-const router = createBrowserRouter([{ element: <AppLayout />, children: [{ index: true, element: <HomePage /> }] }])
+import { ChatPage } from '@/modules/chat/pages/chat-page'
+const router = createBrowserRouter([{ path: '/', element: <ChatPage /> }])
 export function AppRouter() { return <RouterProvider router={router} /> }

@@ -6,7 +6,16 @@ import unittest
 from collections.abc import AsyncIterator
 from typing import Any
 
-from app.modules.agent.application.chat import AgentChatFailedError, ChatAgentService, ChatCommand
+from app.modules.agent.application.chat import (
+    EMPTY_REPLY_FALLBACK,
+    AgentChatFailedError,
+    ChatAgentService,
+    ChatCommand,
+    ChatCompletedEvent,
+    TextDeltaEvent,
+    ToolFinishedEvent,
+    ToolStartedEvent,
+)
 from app.modules.llm.domain.interfaces import GenerationProvider, LLMProviderInfrastructureError
 from app.modules.llm.domain.models import LLMMessage, LLMRequest, LLMResponse, LLMStreamChunk, LLMUsage, ToolCall, ToolDefinition
 from app.modules.llm.gateway.generation import LLMGateway
@@ -26,15 +35,17 @@ class ScriptedProvider(GenerationProvider):
         return "scripted"
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
+        raise NotImplementedError
+
+    async def stream(self, request: LLMRequest) -> AsyncIterator[LLMStreamChunk]:
         self.requests.append(request.model_copy(deep=True))
         response = self.responses.pop(0)
         if isinstance(response, Exception):
             raise response
-        return response
-
-    async def stream(self, request: LLMRequest) -> AsyncIterator[LLMStreamChunk]:
-        raise NotImplementedError
-        yield
+        for word in (response.content or "").split(" "):
+            if word:
+                yield LLMStreamChunk(content_delta=word + " ")
+        yield LLMStreamChunk(tool_calls=response.tool_calls, finish_reason=response.finish_reason, usage=response.usage)
 
 
 class FakeTools(ToolExecutor):
@@ -72,7 +83,7 @@ class ChatAgentServiceTests(unittest.IsolatedAsyncioTestCase):
         provider, tools = ScriptedProvider([_response("Hello!")]), FakeTools()
         result = await ChatAgentService(LLMGateway(provider), tools, max_steps=4).chat(self._command())
 
-        self.assertEqual(result.content, "Hello!")
+        self.assertEqual(result.content, "Hello! ")
         self.assertEqual(result.steps, 1)
         self.assertEqual(tools.calls, [])
         self.assertEqual(provider.requests[0].messages[0].role, "system")
@@ -83,7 +94,7 @@ class ChatAgentServiceTests(unittest.IsolatedAsyncioTestCase):
         provider, tools = ScriptedProvider([_response(tool_calls=[call]), _response("It is 4.")]), FakeTools()
         result = await ChatAgentService(LLMGateway(provider), tools, max_steps=4).chat(self._command())
 
-        self.assertEqual(result.content, "It is 4.")
+        self.assertEqual(result.content, "It is 4. ")
         self.assertEqual(result.steps, 2)
         self.assertEqual(tools.calls, [("basics__calculator", {"expression": "2 + 2"})])
         self.assertEqual(result.tool_invocations[0].output, "2 + 2 = 4")
@@ -97,10 +108,56 @@ class ChatAgentServiceTests(unittest.IsolatedAsyncioTestCase):
         provider = ScriptedProvider([_response(tool_calls=[call]), _response("Done.")])
         result = await ChatAgentService(LLMGateway(provider), FakeTools(), max_steps=2).chat(self._command())
 
-        self.assertEqual(result.content, "Done.")
+        self.assertEqual(result.content, "Done. ")
         self.assertEqual(provider.requests[1].tools, [])
 
     async def test_provider_failure_maps_to_application_error(self) -> None:
         provider = ScriptedProvider([LLMProviderInfrastructureError("down")])
         with self.assertRaises(AgentChatFailedError):
             await ChatAgentService(LLMGateway(provider), FakeTools(), max_steps=4).chat(self._command())
+
+    async def test_stream_emits_tool_events_between_text(self) -> None:
+        call = ToolCall(id="call-1", name="basics__calculator", arguments={"expression": "2 + 2"})
+        provider = ScriptedProvider([_response("Let me check.", tool_calls=[call]), _response("It is 4.")])
+        service = ChatAgentService(LLMGateway(provider), FakeTools(), max_steps=4)
+        events = [event async for event in service.stream_chat(self._command())]
+
+        self.assertEqual([type(event) for event in events], [
+            TextDeltaEvent, TextDeltaEvent, TextDeltaEvent, ToolStartedEvent, ToolFinishedEvent, TextDeltaEvent, TextDeltaEvent, TextDeltaEvent, ChatCompletedEvent,
+        ])
+        started, finished = events[3], events[4]
+        assert isinstance(started, ToolStartedEvent) and isinstance(finished, ToolFinishedEvent)
+        self.assertEqual((started.id, finished.id, finished.output), ("call-1", "call-1", "2 + 2 = 4"))
+        completed = events[-1]
+        assert isinstance(completed, ChatCompletedEvent)
+        self.assertEqual(completed.result.content, "It is 4. ")
+
+    async def test_empty_step_is_retried_without_tools(self) -> None:
+        provider = ScriptedProvider([_response(""), _response("Here is the answer.")])
+        result = await ChatAgentService(LLMGateway(provider), FakeTools(), max_steps=4).chat(self._command())
+
+        self.assertEqual(result.content, "Here is the answer. ")
+        self.assertEqual(len(provider.requests[0].tools), 1)
+        self.assertEqual(provider.requests[1].tools, [])
+
+    async def test_repeated_empty_reply_returns_fallback_text(self) -> None:
+        provider = ScriptedProvider([_response(""), _response("")])
+        result = await ChatAgentService(LLMGateway(provider), FakeTools(), max_steps=4).chat(self._command())
+        self.assertEqual(result.content, EMPTY_REPLY_FALLBACK)
+
+
+class AgentChatFailedErrorTests(unittest.TestCase):
+    """Verify provider failures map to helpful, safe messages."""
+
+    def test_messages_explain_common_causes(self) -> None:
+        from app.modules.llm.providers.ollama.client import OllamaProviderError
+
+        cases = {
+            OllamaProviderError("x", reason="ReadTimeout"): "took too long",
+            OllamaProviderError("x", reason="ConnectError"): "Make sure Ollama is running",
+            OllamaProviderError("x", status_code=404, reason="http_status_error"): "model isn’t available",
+            OllamaProviderError("x", reason="something_else"): "currently unavailable",
+        }
+        for error, expected in cases.items():
+            with self.subTest(reason=error.reason):
+                self.assertIn(expected, AgentChatFailedError.from_provider_error(error).message)

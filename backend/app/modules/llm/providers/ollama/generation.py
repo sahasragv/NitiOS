@@ -67,7 +67,9 @@ class OllamaGenerationProvider(GenerationProvider):
                 message = item.get("message", {})
                 yield LLMStreamChunk(
                     content_delta=message.get("content") or None,
+                    tool_calls=self._to_tool_calls(message.get("tool_calls")),
                     finish_reason=item.get("done_reason") if item.get("done") else None,
+                    usage=self._to_usage(item) if item.get("done") else None,
                     metadata=ResponseMetadata(request_id=request_id),
                 )
             self._log_outcome(
@@ -168,18 +170,23 @@ class OllamaGenerationProvider(GenerationProvider):
     def _to_response(self, result: dict[str, Any], *, request_id: str | None, latency_ms: float) -> LLMResponse:
         """Normalize an Ollama completion while retaining only generic response data."""
         message = result.get("message", {})
-        input_tokens = self._as_non_negative_int(result.get("prompt_eval_count"))
-        output_tokens = self._as_non_negative_int(result.get("eval_count"))
         return LLMResponse(
             content=message.get("content") or None,
             tool_calls=self._to_tool_calls(message.get("tool_calls")),
             provider=self.name,
             model=str(result.get("model") or self._default_model),
-            usage=LLMUsage(input_tokens=input_tokens, output_tokens=output_tokens, total_tokens=input_tokens + output_tokens),
+            usage=self._to_usage(result),
             finish_reason=result.get("done_reason") or None,
             latency_ms=latency_ms,
             metadata=ResponseMetadata(request_id=request_id),
         )
+
+    @classmethod
+    def _to_usage(cls, result: dict[str, Any]) -> LLMUsage:
+        """Read Ollama's token counters from a completed response or final stream chunk."""
+        input_tokens = cls._as_non_negative_int(result.get("prompt_eval_count"))
+        output_tokens = cls._as_non_negative_int(result.get("eval_count"))
+        return LLMUsage(input_tokens=input_tokens, output_tokens=output_tokens, total_tokens=input_tokens + output_tokens)
 
     @staticmethod
     def _as_non_negative_int(value: object) -> int:

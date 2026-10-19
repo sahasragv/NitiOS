@@ -40,6 +40,23 @@ def convert_time(time: str, from_timezone: str, to_timezone: str, date: str | No
 
 
 @server.tool()
+def convert_units(value: float, from_unit: str, to_unit: str) -> str:
+    """Convert a value between units, exactly. Use this instead of writing a formula.
+
+    Supports temperature (C, F, K), length (mm, cm, m, km, in, ft, yd, mi), mass (mg, g, kg, t, oz, lb),
+    volume (ml, l, cup, fl oz, gal), speed (m/s, km/h, mph, knots), area (m2, km2, sq ft, acre, hectare)
+    and data size (B, KB, MB, GB, TB).
+    """
+    return tools.convert_units(value, from_unit, to_unit)
+
+
+@server.tool()
+async def convert_currency(amount: float, from_currency: str, to_currency: str) -> str:
+    """Convert money between currencies at today's reference rate, using ISO codes like USD, EUR, INR, GBP, JPY."""
+    return await tools.convert_currency(amount, from_currency, to_currency)
+
+
+@server.tool()
 async def get_weather(location: str) -> str:
     """Get the current weather and today's forecast for a city or place name, e.g. 'Hyderabad'."""
     return await tools.get_weather(location)
@@ -47,5 +64,10 @@ async def get_weather(location: str) -> str:
 
 @server.tool()
 async def translate(text: str, target_language: str, source_language: str = "en") -> str:
-    """Translate text between languages using ISO 639-1 codes, e.g. source 'en', target 'hi', 'fr', 'ja'."""
+    """Translate a specific piece of text the user supplied (max 500 characters) between ISO 639-1 language codes,
+    e.g. source 'en', target 'hi', 'te', 'ta', 'fr', 'ja'.
+
+    Only for explicit "translate this text" requests. To answer a question in another language,
+    write the answer directly in that language instead of calling this tool.
+    """
     return await tools.translate(text, target_language, source_language)

@@ -1,7 +1,20 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #0f172a; background: #f8fafc; font-synthesis: none; }
+:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #0f172a; background: #ffffff; font-synthesis: none; }
 * { border-color: #e2e8f0; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input, textarea, select { font: inherit; }
+::selection { background: #bbf7d0; color: #14532d; }
+* { scrollbar-width: thin; scrollbar-color: #bbf7d0 transparent; }
+
+@layer components {
+  /* Main chat canvas: a soft green glow at the top over a faint dot grid. */
+  .setu-canvas {
+    background-color: #ffffff;
+    background-image:
+      radial-gradient(ellipse 70% 45% at 50% -5%, rgb(134 239 172 / 0.35), transparent 70%),
+      radial-gradient(circle at 1px 1px, rgb(22 163 74 / 0.09) 1px, transparent 0);
+    background-size: 100% 100%, 22px 22px;
+  }
+}
