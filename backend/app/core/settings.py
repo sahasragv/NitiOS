@@ -10,7 +10,7 @@ _BACKEND_DIRECTORY = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    """Runtime settings for the NitiOS backend application.
+    """Runtime settings for the Setu backend application.
 
     Values are loaded from process environment variables and, when present, the
     ``backend/.env`` file. Environment variables take precedence over file values.
@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    APP_NAME: str = "NitiOS"
+    APP_NAME: str = "Setu"
     APP_ENV: str = "development"
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = Field(default=8000, ge=1, le=65535)

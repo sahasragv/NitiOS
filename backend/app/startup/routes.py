@@ -1,4 +1,4 @@
-"""Route registration for the NitiOS application."""
+"""Route registration for the Setu application."""
 
 from fastapi import APIRouter, FastAPI
 
@@ -13,7 +13,7 @@ router = APIRouter()
 @router.get("/")
 def get_service_status() -> dict[str, str]:
     """Return the service availability status."""
-    return {"service": "NitiOS", "status": "running"}
+    return {"service": "Setu", "status": "running"}
 
 
 def register_routes(app: FastAPI) -> None:

@@ -1,7 +1,10 @@
-# NitiOS
+# Setu
 
-NitiOS is an enterprise AI platform for building reliable, extensible AI-powered
-business capabilities.
+**One chat. All your apps.**
+
+Setu (Sanskrit for "bridge") is an AI assistant platform that connects a chat
+agent to the apps and tools you already use through the Model Context Protocol
+(MCP). It runs on any model, including fully local ones via Ollama.
 
 ## Vision
 

@@ -1,4 +1,4 @@
-"""Application lifespan composition for the NitiOS backend."""
+"""Application lifespan composition for the Setu backend."""
 
 import os
 from collections.abc import AsyncIterator, Callable

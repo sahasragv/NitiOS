@@ -1,4 +1,4 @@
-"""FastAPI exception adapters for standard NitiOS error responses."""
+"""FastAPI exception adapters for standard Setu error responses."""
 
 from typing import Any
 
@@ -99,7 +99,7 @@ async def handle_unexpected_exception(
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """Register every NitiOS exception handler on a FastAPI application."""
+    """Register every Setu exception handler on a FastAPI application."""
     app.add_exception_handler(BaseApplicationException, handle_application_exception)
     app.add_exception_handler(HTTPException, handle_http_exception)
     app.add_exception_handler(RequestValidationError, handle_request_validation_error)

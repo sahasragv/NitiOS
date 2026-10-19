@@ -1,4 +1,4 @@
-"""Reusable API response models for the NitiOS platform."""
+"""Reusable API response models for the Setu platform."""
 
 from datetime import datetime, timezone
 from typing import Any, Generic, Literal, TypeVar

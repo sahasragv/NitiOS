@@ -1,4 +1,4 @@
-"""stdio MCP server exposing NitiOS's built-in everyday tools."""
+"""stdio MCP server exposing Setu's built-in everyday tools."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from app.mcp_servers.basics import tools
 
 
-server = FastMCP("nitios-basics", log_level="WARNING")
+server = FastMCP("setu-basics", log_level="WARNING")
 
 
 @server.tool()

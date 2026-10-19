@@ -1,4 +1,4 @@
-"""Centralized logging configuration for the NitiOS backend."""
+"""Centralized logging configuration for the Setu backend."""
 
 import logging
 from logging.config import dictConfig

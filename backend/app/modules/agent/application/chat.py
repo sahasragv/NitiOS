@@ -18,7 +18,7 @@ from app.modules.tools.domain.models import ToolInvocation
 
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are NitiOS, a helpful assistant with access to tools. "
+    "You are Setu, a helpful assistant with access to tools. "
     "Use a tool whenever it gives a more accurate answer than you can on your own: "
     "arithmetic, the current time or time-zone conversion, weather, translation, and connected apps such as GitHub. "
     "Never invent tool results. If a tool returns an error you can fix, such as a wrong argument format, "

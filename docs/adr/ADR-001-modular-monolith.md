@@ -6,12 +6,12 @@ Accepted
 
 ## Context
 
-NitiOS needs a production-oriented foundation that supports clear ownership,
+Setu needs a production-oriented foundation that supports clear ownership,
 independent domain evolution, and a maintainable deployment model.
 
 ## Decision
 
-NitiOS will begin as a Modular Monolith with strict module boundaries and Clean
+Setu will begin as a Modular Monolith with strict module boundaries and Clean
 Architecture, allowing future extraction into microservices if required.
 
 ## Alternatives Considered

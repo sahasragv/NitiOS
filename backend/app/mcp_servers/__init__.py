@@ -1,1 +1,1 @@
-"""MCP servers maintained by NitiOS, launched as subprocesses by the tool hub."""
+"""MCP servers maintained by Setu, launched as subprocesses by the tool hub."""

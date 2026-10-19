@@ -1,1 +1,1 @@
-"""NitiOS backend application package."""
+"""Setu backend application package."""

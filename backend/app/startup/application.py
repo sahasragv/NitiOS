@@ -1,4 +1,4 @@
-"""FastAPI application factory for the NitiOS backend."""
+"""FastAPI application factory for the Setu backend."""
 
 from fastapi import FastAPI
 
@@ -10,7 +10,7 @@ from app.startup.routes import register_routes
 
 
 def create_application() -> FastAPI:
-    """Create and return the configured NitiOS FastAPI application.
+    """Create and return the configured Setu FastAPI application.
 
     Routes, middleware, and exception handlers should be composed here as their
     respective startup modules are introduced.

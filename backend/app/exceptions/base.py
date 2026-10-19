@@ -2,7 +2,7 @@
 
 
 class BaseApplicationException(Exception):
-    """Base exception for expected NitiOS application failures.
+    """Base exception for expected Setu application failures.
 
     Subclasses can provide domain-specific defaults while preserving a consistent
     error message, machine-readable code, and HTTP status mapping.

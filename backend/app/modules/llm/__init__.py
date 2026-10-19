@@ -1,4 +1,4 @@
-"""Provider-neutral LLM domain contracts for NitiOS."""
+"""Provider-neutral LLM domain contracts for Setu."""
 
 from app.modules.llm.domain.interfaces import EmbeddingProvider, GenerationProvider, LLMProviderInfrastructureError
 from app.modules.llm.domain.models import (

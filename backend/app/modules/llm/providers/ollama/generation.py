@@ -1,4 +1,4 @@
-"""Generation adapter translating NitiOS contracts to and from Ollama chat requests."""
+"""Generation adapter translating Setu contracts to and from Ollama chat requests."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ class OllamaGenerationProvider(GenerationProvider):
         return "ollama"
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
-        """Generate a complete response from Ollama for a NitiOS request."""
+        """Generate a complete response from Ollama for a Setu request."""
         started_at = perf_counter()
         request_id = request.metadata.request_id
         try:

@@ -1,4 +1,4 @@
-"""NitiOS application entry point."""
+"""Setu application entry point."""
 
 from app.startup.application import create_application
 
