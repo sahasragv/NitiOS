@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.api.v1.agent.dependencies import get_chat_agent_service, get_model_info, get_title_service, get_tool_executor
+from app.api.v1.auth.dependencies import get_current_user
 from app.api.v1.agent.schemas import (
     AgentInfoDTO,
     ChatRequestDTO,
@@ -27,7 +28,7 @@ from app.modules.llm.domain.models import LLMMessage
 from app.modules.tools.domain.interfaces import ToolExecutor
 
 
-router = APIRouter(prefix="/api/v1/agent", tags=["agent"])
+router = APIRouter(prefix="/api/v1/agent", tags=["agent"], dependencies=[Depends(get_current_user)])
 _logger = get_logger(__name__)
 
 
@@ -56,10 +57,11 @@ def _sse(event: BaseModel) -> str:
 async def chat(
     body: ChatRequestDTO,
     service: ChatAgentService = Depends(get_chat_agent_service),
+    tools: ToolExecutor = Depends(get_tool_executor),
     request_id: str | None = Header(default=None, alias="X-Request-ID"),
 ) -> SuccessResponse[ChatResponseDTO]:
     """Delegate one chat turn to the agent application service."""
-    result = await service.chat(_to_command(body, request_id))
+    result = await service.chat(_to_command(body, request_id), tools)
     return SuccessResponse(
         message="Chat turn completed.",
         data=ChatResponseDTO(
@@ -78,6 +80,7 @@ async def chat(
 async def chat_stream(
     body: ChatRequestDTO,
     service: ChatAgentService = Depends(get_chat_agent_service),
+    tools: ToolExecutor = Depends(get_tool_executor),
     request_id: str | None = Header(default=None, alias="X-Request-ID"),
 ) -> StreamingResponse:
     """Stream one chat turn as Server-Sent Events.
@@ -90,7 +93,7 @@ async def chat_stream(
 
     async def events() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_chat(command):
+            async for event in service.stream_chat(command, tools):
                 yield _sse(event)
         except BaseApplicationException as error:
             yield _sse(ChatErrorEvent(code=error.error_code, message=error.message))

@@ -52,7 +52,7 @@ export function ChatWelcome({ onSelect }: ChatWelcomeProps) {
           <span className="bg-gradient-to-r from-brand-600 via-brand-500 to-teal-500 bg-clip-text text-transparent">help you</span> today?
         </h1>
         <p className="mt-3 max-w-md text-center text-[15px] text-slate-500 short:mt-2 short:text-sm">
-          Ask anything. Setu answers directly or reaches for the right app — weather, currencies, time zones and more.
+          Ask anything. Setu answers directly or reaches for the right app for weather, currencies, time zones and more.
         </p>
 
         {tools && tools.length > 0 && (

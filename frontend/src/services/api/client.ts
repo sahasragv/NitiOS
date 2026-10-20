@@ -30,9 +30,25 @@ apiClient.interceptors.request.use(
   (error: unknown) => Promise.reject(normalizeApiError(error)),
 )
 
+let unauthorizedHandler: (() => void) | null = null
+
+/** Register what happens when any request reports an ended session (HTTP 401). */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler
+}
+
+/** Notify the app that the session has ended; used by requests that bypass axios. */
+export function notifyUnauthorized(): void {
+  unauthorizedHandler?.()
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: unknown) => Promise.reject(normalizeApiError(error)),
+  (error: unknown) => {
+    const normalized = normalizeApiError(error)
+    if (normalized.status === 401) notifyUnauthorized()
+    return Promise.reject(normalized)
+  },
 )
 
 /** Converts Axios and network failures into the application-wide API error contract. */

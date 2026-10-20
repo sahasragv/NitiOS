@@ -1,4 +1,4 @@
-import { apiBaseURL } from '@/services/api/client'
+import { apiBaseURL, notifyUnauthorized } from '@/services/api/client'
 import { API_ENDPOINTS } from '@/services/api/endpoints'
 import type { ChatHistoryMessage, ChatStreamEvent } from '@/modules/chat/types'
 
@@ -41,6 +41,10 @@ export async function streamChat(
 }
 
 async function readErrorMessage(response: Response): Promise<string> {
+  if (response.status === 401) {
+    notifyUnauthorized()
+    return 'Your session has ended. Please sign in again.'
+  }
   if (response.status === 502 || response.status === 504) return 'Setu’s server is not reachable. Is the backend running?'
   try {
     const payload = (await response.json()) as { message?: string }

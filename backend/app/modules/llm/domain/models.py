@@ -35,6 +35,8 @@ class ToolCall(BaseModel):
     id: str | None = None
     name: str = Field(min_length=1)
     arguments: dict[str, Any] = Field(default_factory=dict)
+    provider_data: dict[str, Any] = Field(default_factory=dict)
+    """Opaque provider fields that must be echoed back with the call, such as Gemini's thought signature."""
 
 
 class LLMMessage(BaseModel):

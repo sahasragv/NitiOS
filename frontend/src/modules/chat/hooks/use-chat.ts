@@ -8,18 +8,18 @@ import type { ChatMessage, Conversation } from '@/modules/chat/types'
 
 const SAVE_DELAY_MS = 400
 
-/** Owns every conversation, the active one, and the in-flight streamed reply. */
-export function useChat() {
-  const [conversations, setConversations] = useState<Conversation[]>(loadConversations)
+/** Owns the signed-in user's conversations, the active one, and the in-flight streamed reply. */
+export function useChat(userId: string) {
+  const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations(userId))
   const [activeId, setActiveId] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const titleRequests = useRef(new Set<string>())
 
   useEffect(() => {
-    const timer = window.setTimeout(() => saveConversations(conversations), SAVE_DELAY_MS)
+    const timer = window.setTimeout(() => saveConversations(userId, conversations), SAVE_DELAY_MS)
     return () => window.clearTimeout(timer)
-  }, [conversations])
+  }, [userId, conversations])
 
   useEffect(() => () => abortRef.current?.abort(), [])
 

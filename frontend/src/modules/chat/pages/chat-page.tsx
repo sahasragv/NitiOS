@@ -8,9 +8,11 @@ import { ChatSidebar } from '@/modules/chat/components/chat-sidebar'
 import { ChatThread } from '@/modules/chat/components/chat-thread'
 import { ChatWelcome } from '@/modules/chat/components/chat-welcome'
 import { useChat } from '@/modules/chat/hooks/use-chat'
+import type { OAuthNotice } from '@/modules/auth/lib/oauth-notice'
+import type { User } from '@/modules/auth/types'
 
-export function ChatPage() {
-  const chat = useChat()
+export function ChatPage({ user, notice }: { user: User; notice: OAuthNotice | null }) {
+  const chat = useChat(user.id)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const messages = chat.activeConversation?.messages ?? []
   const { data: info } = useAgentInfo()
@@ -23,6 +25,8 @@ export function ChatPage() {
   return (
     <div className="flex h-dvh bg-white text-slate-900">
       <ChatSidebar
+        user={user}
+        notice={notice}
         conversations={chat.conversations}
         activeId={chat.activeConversation?.id ?? null}
         open={sidebarOpen}

@@ -10,7 +10,9 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from app.api.v1.agent.dependencies import get_chat_agent_service, get_model_info, get_title_service, get_tool_executor
+from app.api.v1.auth.dependencies import get_auth_service, get_current_user
 from app.main import app
+from app.modules.accounts.domain.models import User
 from app.modules.agent.application.chat import (
     AgentChatFailedError,
     ChatCompletedEvent,
@@ -31,8 +33,9 @@ class FakeChatService:
         self.error: Exception | None = None
         self.command: Any = None
 
-    async def chat(self, command: Any) -> ChatResult:
+    async def chat(self, command: Any, tools: Any = None) -> ChatResult:
         self.command = command
+        self.tools = tools
         if self.error:
             raise self.error
         return ChatResult(
@@ -42,8 +45,9 @@ class FakeChatService:
             request_id=command.request_id or "generated",
         )
 
-    async def stream_chat(self, command: Any) -> AsyncIterator[ChatEvent]:
+    async def stream_chat(self, command: Any, tools: Any = None) -> AsyncIterator[ChatEvent]:
         self.command = command
+        self.tools = tools
         yield ToolStartedEvent(id="c1", name="basics__calculator", arguments={"expression": "2+2"})
         yield ToolFinishedEvent(id="c1", name="basics__calculator", output="2+2 = 4", is_error=False)
         yield TextDeltaEvent(text="It is 4.")
@@ -55,6 +59,11 @@ class FakeChatService:
 class FakeTools:
     def list_tools(self) -> list[ToolDefinition]:
         return [ToolDefinition(name="basics__calculator", description="Math", input_schema={"type": "object"})]
+
+
+class SignedOutAuth:
+    async def user_for_session(self, token: str) -> None:
+        return None
 
 
 class FakeTitleService:
@@ -71,6 +80,7 @@ class AgentEndpointTests(unittest.TestCase):
         app.dependency_overrides[get_tool_executor] = FakeTools
         app.dependency_overrides[get_title_service] = FakeTitleService
         app.dependency_overrides[get_model_info] = lambda: {"provider": "ollama", "model": "qwen2.5:7b"}
+        app.dependency_overrides[get_current_user] = lambda: User(id="u1", email="a@example.com", name="A")
         self.client = TestClient(app)
 
     def tearDown(self) -> None:
@@ -88,6 +98,14 @@ class AgentEndpointTests(unittest.TestCase):
         self.assertEqual(data["content"], "It is 4.")
         self.assertEqual(data["tool_invocations"][0]["name"], "basics__calculator")
         self.assertEqual(self.service.command.request_id, "req-9")
+        self.assertIsInstance(self.service.tools, FakeTools)
+
+    def test_requires_sign_in(self) -> None:
+        del app.dependency_overrides[get_current_user]
+        app.dependency_overrides[get_auth_service] = lambda: SignedOutAuth()
+        response = self.client.post("/api/v1/agent/chat", json={"messages": [{"role": "user", "content": "hi"}]})
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["error"]["code"], "AUTH_REQUIRED")
 
     def test_rejects_tool_role_from_clients(self) -> None:
         response = self.client.post("/api/v1/agent/chat", json={"messages": [{"role": "tool", "content": "x"}]})

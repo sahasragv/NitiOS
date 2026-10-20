@@ -114,8 +114,10 @@ class AgentChatFailedError(BaseApplicationException):
             return cls("Can’t reach the model server. Make sure Ollama is running.")
         if status == 404:
             return cls("The configured model isn’t available. Check the model name in backend/.env.")
-        if reason == "authentication_error" or status == 401:
+        if reason in {"authentication_error", "PERMISSION_DENIED", "UNAUTHENTICATED"} or status in {401, 403}:
             return cls("The model provider rejected the API key. Check it in backend/.env.")
+        if reason == "RESOURCE_EXHAUSTED" or status == 429:
+            return cls("The model’s free usage limit was reached. Wait a minute and try again, or try again tomorrow if the daily limit is used up.")
         return cls()
 
 
@@ -136,15 +138,19 @@ class ChatAgentService:
         self._system_prompt = system_prompt
         self._logger = get_logger(__name__)
 
-    async def chat(self, command: ChatCommand) -> ChatResult:
+    async def chat(self, command: ChatCommand, tools: ToolExecutor | None = None) -> ChatResult:
         """Answer the latest user message and return only the final result."""
-        async for event in self.stream_chat(command):
+        async for event in self.stream_chat(command, tools):
             if isinstance(event, ChatCompletedEvent):
                 return event.result
         raise AgentChatFailedError()
 
-    async def stream_chat(self, command: ChatCommand) -> AsyncIterator[ChatEvent]:
-        """Answer the latest user message, yielding text and tool events as they happen."""
+    async def stream_chat(self, command: ChatCommand, tools: ToolExecutor | None = None) -> AsyncIterator[ChatEvent]:
+        """Answer the latest user message, yielding text and tool events as they happen.
+
+        ``tools`` replaces the service's default executor for this turn, e.g. with the user's own tools.
+        """
+        executor = tools or self._tools
         request_id = command.request_id or str(uuid4())
         started_at = perf_counter()
         system_message = LLMMessage(
@@ -154,7 +160,7 @@ class ChatAgentService:
         conversation = [system_message, *command.messages]
         invocations: list[ToolInvocation] = []
         usage = LLMUsage()
-        tools = self._tools.list_tools()
+        definitions = executor.list_tools()
         # Set when a step returns neither text nor tool calls; the next step must answer in plain text.
         withhold_tools = False
 
@@ -167,7 +173,7 @@ class ChatAgentService:
                 request = LLMRequest(
                     capability=LLMCapability.REASONING,
                     messages=conversation,
-                    tools=tools if step < self._max_steps and not withhold_tools else [],
+                    tools=definitions if step < self._max_steps and not withhold_tools else [],
                     metadata=RequestMetadata(request_id=request_id),
                 )
                 async for chunk in self._gateway.stream(request):
@@ -202,7 +208,7 @@ class ChatAgentService:
                 for call in tool_calls:
                     call_id = call.id or f"call_{uuid4().hex[:12]}"
                     yield ToolStartedEvent(id=call_id, name=call.name, arguments=call.arguments)
-                    result = await self._tools.call_tool(call.name, call.arguments)
+                    result = await executor.call_tool(call.name, call.arguments)
                     invocations.append(
                         ToolInvocation(
                             name=call.name,

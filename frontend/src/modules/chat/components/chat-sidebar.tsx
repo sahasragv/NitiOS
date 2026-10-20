@@ -1,14 +1,19 @@
 import { useState } from 'react'
-import { Cloud, Cpu, MessageSquare, Plus, Search, Trash2, X } from 'lucide-react'
+import { CheckCircle2, FolderGit2, LogOut, MessageSquare, Plus, Search, Trash2, TriangleAlert, Unplug, X } from 'lucide-react'
 
 import { SetuLogo } from '@/components/common/setu-logo'
 import { cn } from '@/lib/utils'
-import { useAgentInfo } from '@/modules/chat/api/agent-api'
+import { startGitHubConnection, useConnections, useDisconnectGitHub, useSignOut } from '@/modules/auth/api/auth-api'
+import type { OAuthNotice } from '@/modules/auth/lib/oauth-notice'
+import type { User } from '@/modules/auth/types'
 import { useTools } from '@/modules/chat/api/use-tools'
 import { serverLabel, splitToolName } from '@/modules/chat/lib/tool-labels'
 import type { Conversation } from '@/modules/chat/types'
 
 export interface ChatSidebarProps {
+  user: User
+  /** Result of an OAuth redirect (e.g. "GitHub connected"), shown once. */
+  notice: OAuthNotice | null
   conversations: Conversation[]
   activeId: string | null
   open: boolean
@@ -34,7 +39,7 @@ function groupByRecency(conversations: Conversation[]): { label: string; items: 
   return groups.filter((group) => group.items.length > 0)
 }
 
-export function ChatSidebar({ conversations, activeId, open, onClose, onNewChat, onSelect, onDelete }: ChatSidebarProps) {
+export function ChatSidebar({ user, notice, conversations, activeId, open, onClose, onNewChat, onSelect, onDelete }: ChatSidebarProps) {
   const [query, setQuery] = useState('')
   const normalizedQuery = query.trim().toLowerCase()
   const visible = normalizedQuery ? conversations.filter((conversation) => conversation.title.toLowerCase().includes(normalizedQuery)) : conversations
@@ -44,10 +49,11 @@ export function ChatSidebar({ conversations, activeId, open, onClose, onNewChat,
       {open && <div className="fixed inset-0 z-30 bg-brand-950/20 backdrop-blur-[2px] lg:hidden" onClick={onClose} aria-hidden="true" />}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-brand-100 bg-gradient-to-b from-brand-50 via-brand-50/70 to-white transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 isolate flex w-72 flex-col border-r border-brand-100 bg-gradient-to-b from-brand-50 via-brand-50/70 to-white transition-transform lg:relative lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
+        <div className="setu-grass pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-72" aria-hidden="true" />
         <div className="flex h-16 items-center gap-2.5 px-4">
           <SetuLogo className="size-9 rounded-xl" />
           <div className="leading-tight">
@@ -123,26 +129,55 @@ export function ChatSidebar({ conversations, activeId, open, onClose, onNewChat,
         </nav>
 
         <div className="space-y-2 p-3">
-          <ConnectedApps />
-          <ModelCard />
+          <ConnectedApps notice={notice} />
+          <AccountRow user={user} />
         </div>
       </aside>
     </>
   )
 }
 
-/** Which MCP servers are connected, derived from the backend's tool list. */
-function ConnectedApps() {
+function LiveDot() {
+  return (
+    <span className="relative flex size-2">
+      <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand-400 opacity-60" />
+      <span className="relative inline-flex size-2 rounded-full bg-brand-500" />
+    </span>
+  )
+}
+
+/** Built-in tool servers plus the accounts this user can connect. */
+function ConnectedApps({ notice }: { notice: OAuthNotice | null }) {
   const { data: tools, isLoading, isError } = useTools()
+  const { data: connections } = useConnections()
+  const disconnect = useDisconnectGitHub()
+  const [visibleNotice, setVisibleNotice] = useState(notice)
+
   const servers = new Map<string, number>()
   for (const tool of tools ?? []) {
     const { server } = splitToolName(tool.name)
-    servers.set(server, (servers.get(server) ?? 0) + 1)
+    if (server !== 'github') servers.set(server, (servers.get(server) ?? 0) + 1)
   }
+  const github = connections?.find((connection) => connection.provider === 'github')
 
   return (
     <div className="rounded-xl border border-brand-100 bg-white/90 p-3 shadow-sm">
       <p className="text-[11px] font-semibold uppercase tracking-wider text-brand-800/50">Connected apps</p>
+      {visibleNotice && (
+        <p
+          className={cn(
+            'mt-2 flex items-start gap-1.5 rounded-lg px-2 py-1.5 text-xs',
+            visibleNotice.tone === 'success' ? 'bg-brand-50 text-brand-800' : 'bg-red-50 text-red-700',
+          )}
+          role="status"
+        >
+          {visibleNotice.tone === 'success' ? <CheckCircle2 className="mt-px size-3.5 shrink-0" /> : <TriangleAlert className="mt-px size-3.5 shrink-0" />}
+          <span className="flex-1">{visibleNotice.message}</span>
+          <button type="button" onClick={() => setVisibleNotice(null)} className="opacity-60 hover:opacity-100" aria-label="Dismiss">
+            <X className="size-3.5" />
+          </button>
+        </p>
+      )}
       <ul className="mt-2 space-y-1.5 text-sm">
         {isLoading && <li className="text-slate-400">Checking…</li>}
         {isError && (
@@ -150,36 +185,74 @@ function ConnectedApps() {
             <span className="size-2 rounded-full bg-red-500" /> Backend offline
           </li>
         )}
-        {!isLoading && !isError && servers.size === 0 && <li className="text-slate-400">No apps connected</li>}
         {[...servers].map(([server, count]) => (
           <li key={server} className="flex items-center gap-2 text-slate-700">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand-400 opacity-60" />
-              <span className="relative inline-flex size-2 rounded-full bg-brand-500" />
-            </span>
+            <LiveDot />
             <span className="flex-1 truncate">{serverLabel(server)}</span>
             <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">{count} tools</span>
           </li>
         ))}
+        {github && (
+          <li className="flex items-center gap-2 text-slate-700">
+            {github.connected ? <LiveDot /> : <FolderGit2 className="size-3.5 text-slate-400" />}
+            <span className="min-w-0 flex-1 truncate">
+              GitHub{github.connected && github.account && <span className="text-slate-400"> · @{github.account}</span>}
+            </span>
+            {github.connected ? (
+              <button
+                type="button"
+                onClick={() => disconnect.mutate()}
+                disabled={disconnect.isPending}
+                className="rounded-md p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                aria-label="Disconnect GitHub"
+                title="Disconnect GitHub"
+              >
+                <Unplug className="size-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={startGitHubConnection}
+                disabled={!github.enabled}
+                title={github.enabled ? undefined : 'Add GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to backend/.env'}
+                className="rounded-full bg-brand-600 px-2.5 py-0.5 text-[11px] font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                Connect
+              </button>
+            )}
+          </li>
+        )}
       </ul>
     </div>
   )
 }
 
-function ModelCard() {
-  const { data: info } = useAgentInfo()
-  if (!info) return null
-  const isCloud = info.provider !== 'ollama'
-  const Icon = isCloud ? Cloud : Cpu
+function AccountRow({ user }: { user: User }) {
+  const signOut = useSignOut()
+  const [imageFailed, setImageFailed] = useState(false)
+  const initials = user.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
+
   return (
-    <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs text-slate-500">
-      <span className="grid size-7 place-items-center rounded-lg bg-brand-100 text-brand-700">
-        <Icon className="size-3.5" />
-      </span>
-      <div className="min-w-0 leading-tight">
-        <p className="truncate font-medium text-slate-700">{info.model}</p>
-        <p>{isCloud ? 'Cloud model' : 'Running locally'}</p>
+    <div className="flex items-center gap-2.5 rounded-xl px-2 py-1.5">
+      {user.picture && !imageFailed ? (
+        <img src={user.picture} alt="" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} className="size-8 rounded-full ring-2 ring-white" />
+      ) : (
+        <span className="grid size-8 place-items-center rounded-full bg-brand-600 text-xs font-semibold text-white ring-2 ring-white">{initials}</span>
+      )}
+      <div className="min-w-0 flex-1 leading-tight">
+        <p className="truncate text-sm font-medium text-slate-800">{user.name}</p>
+        <p className="truncate text-xs text-slate-500">{user.email}</p>
       </div>
+      <button
+        type="button"
+        onClick={() => signOut.mutate()}
+        disabled={signOut.isPending}
+        className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-slate-800 disabled:opacity-50"
+        aria-label="Sign out"
+        title="Sign out"
+      >
+        <LogOut className="size-4" />
+      </button>
     </div>
   )
 }
